@@ -1,0 +1,336 @@
+$def with (title, road_param, value_param, chart_param, subway_param, restaurant_param, hotel_param, model_param)
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HoLSAT</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="web.py" content="Remember Aaron Swartz">
+    <meta name="author" content="StriGes@Geog.UFL">
+    <link type="text/css" href="http://code.jquery.com/ui/1.8.24/themes/ui-lightness/jquery-ui.css" rel="stylesheet">
+    <link type="text/css" href="static/js/openlayers/theme/default/style.css" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="http://ajax.aspnetcdn.com/ajax/jquery.dataTables/1.9.4/css/jquery.dataTables.css">
+
+    <script type="text/javascript" src="static/js/jquery-1.8.0.min.js"></script>
+    <script type="text/javascript" src="static/js/jquery-ui-1.8.24.custom.min.js"></script>
+    <script type="text/javascript" src="static/js/jquery.layout-latest.js"></script>
+    <script type="text/javascript" src="static/js/openlayers/OpenLayers.js"></script>
+    <script type="text/javascript" src="http://svn.osgeo.org/metacrs/proj4js/trunk/lib/proj4js-combined.js"></script>
+    <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+
+    <script type="text/javascript">
+        google.load("visualization", "1", {packages:["corechart"]});
+        google.setOnLoadCallback(drawChart);
+        function drawChart() {
+            var data = google.visualization.arrayToDataTable($:chart_param);
+            var options = {
+                h3: 'none',
+                colors: ['#A100A1', '#F5B800', '#F57A00', '#F53D00', '#A10000']
+            };
+            var chart = new google.visualization.BarChart(document.getElementById('chart_div'));
+            chart.draw(data, options);
+        }
+        $$(function() {
+            //Init model values
+            var model_param = $:model_param;
+            //Init frame
+            var myLayout = $$('body').layout({ applyDefaultStyles: false });
+            myLayout.sizePane("north", 72);
+            //myLayout.sizePane("east", 300);
+            myLayout.sizePane("west", '25%');
+            //myLayout.sizePane("south", 50);
+            //Init sliders
+            $$("#slider_starrate").slider({
+                range: "min",
+                value: 3,
+                min: 1,
+                max: 5,
+                step: 1,
+                slide: function(event, ui){
+                    $$("#starrate").val(ui.value);
+                }
+            });
+            $$("#starrate").val($$("#slider_starrate").slider("value"));
+            $$("#slider_diver").slider({
+                range: "min",
+                value: 50,
+                min: 0,
+                max: 100,
+                step: 0.1,
+                slide: function(event, ui){
+                    $$("#diver").val(ui.value);
+                }
+            });
+            $$("#diver").val($$("#slider_diver").slider("value"));
+            //Init map
+            map = new OpenLayers.Map('map', {
+                projection: "EPSG:32650",
+                maxExtent: [166021.4431, 0.0000, 833978.5569, 9329005.1825],
+                numZoomLevels: 20
+            });
+            //Init layers
+            roadlayer = new OpenLayers.Layer.WMS("Roads",
+            "http://www.hotel-location.net/cgi-bin/mapserv.exe",
+            $:road_param,
+            {visibility: true}
+            );
+            sublayer = new OpenLayers.Layer.WMS("Subway Stations",
+            "http://www.hotel-location.net/cgi-bin/mapserv.exe",
+            $:subway_param,
+            {visibility: false}
+            );
+            restlayer = new OpenLayers.Layer.WMS("Restaurants",
+            "http://www.hotel-location.net/cgi-bin/mapserv.exe",
+            $:restaurant_param,
+            {visibility: false}
+            );
+            hotellayer = new OpenLayers.Layer.WMS("Hotels",
+            "http://www.hotel-location.net/cgi-bin/mapserv.exe",
+            $:hotel_param,
+            {visibility: false}
+            );
+            valuelayer = new OpenLayers.Layer.WMS("Hotel Probabilities",
+            "http://www.hotel-location.net/cgi-bin/mapserv.exe",
+            $:value_param,
+            {isBaseLayer: true, visibility: true}
+            );
+            //Add layers
+            map.addLayers([valuelayer, roadlayer, sublayer, restlayer, hotellayer]);
+            map.addControl(new OpenLayers.Control.LayerSwitcher());
+            map.zoomToExtent([437264.375464,4408775.944154,456256.766511,4426568.81582])
+            //Button
+            $$("#calc").button();
+            $$("#reset").button();
+            $$("#tune").button();
+            //Triggle Windows
+            $$("#dialog_model").dialog({
+                autoOpen: false,
+                modal: true,
+                height: 572,
+                width: 582,
+                buttons: {
+                    Ok: function() {
+                        var update_param = {};
+                        update_param[0] = {};
+                        update_param[1] = {};
+                        for (var i=0; i<9; i++)
+                        {
+                            update_param[0][i] = $$("#p" + i).val()
+                        }
+                        for (var j=1; j<4; j++)
+                        {
+                            update_param[1][j - 1] = $$("#a" + j).val()
+                        }
+                        $$.post("update", {"u" : JSON.stringify(update_param)});
+                        $$(this).dialog( "close" );
+                    },
+                    Cancel: function() {
+                        $$(this).dialog( "close" );
+                    }
+                }
+            });
+            $$("#about_diag").dialog({
+                autoOpen: false,
+                modal: true
+            });
+            $$("#about").click(function()
+                {
+                    $$("#about_diag").dialog('open');
+                    return false;
+                });
+            $$("#accordian").accordion();
+            $$("#tune").click(function() 
+                {
+                    if (!$$("input:radio[name=model]:checked").val())
+                    {
+                        alert("Select a model first!");
+                        return false;
+                    }
+                    //if ($$("input:radio[name=model]:checked").val() > 2)
+                    //{
+                    //	alert("Sorry. Changing parameters of selected model is not supported!");
+                    //	return false;
+                    //}
+                    //alert("dialog_model_" + $$("input:radio[name=model]:checked").val());
+                    //$$("#dialog_model_" + $$("input:radio[name=model]:checked").val()).dialog("open");
+                    var nmodel = $$("input:radio[name=model]:checked").val();
+                    var nrate = $$("#starrate").val();
+                    var nowner = $$("input:radio[name=ownership]:checked").val();
+                    for(var i=0;i<9;i++)
+                    {
+                        if (nmodel == 0 || nmodel > 2)
+                        {
+                            $$("#p" + i).val(model_param[nmodel][0][i]);
+                        }
+                        if (nmodel == 1)
+                        {
+                            $$("#p" + i).val(model_param[nmodel][nrate][0][i]);
+                        }
+                        if (nmodel == 2)
+                        {
+                            $$("#p" + i).val(model_param[nmodel][nowner][0][i]);
+                        }
+                    }										
+                    for(var j=1;j<4;j++)
+                    {
+                        if (nmodel == 0)
+                        {
+                            $$("#a" + j).val(model_param[nmodel][1][j - 1]);
+                        }
+                        if (nmodel == 1)
+                        {
+                            $$("#a" + j).val(model_param[nmodel][nrate][1][j - 1]);
+                        }
+                        if (nmodel == 2)
+                        {
+                            $$("#a" + j).val(model_param[nmodel][nowner][1][j - 1]);
+                        }
+                        if (nmodel > 2)
+                        {
+                            $$("#a" + j).val(0);
+                        }
+                    }
+                    $$("#dialog_model").dialog("open");
+                });
+        });
+    </script>
+</head>
+<body>
+    <div class="ui-layout-center" style="border-style: solid; border-width: 1px;">
+        <div id="map" style="width: 100%; height: 100%">
+        </div>
+    </div>
+    <div class="ui-layout-north">
+        <div>
+            <img src="static/image/logo.png" style="float:left; height:80px">
+            <h2 style="font-family: Helvetica Neue, Lucida Grande, Segoe UI, Arial, Helvetica, Verdana, sans-serif;
+                color: black; float:left">
+                Hotel Location Selection and Analysis Tool
+            </h2>
+        </div>
+        <div style="float: right">
+            <a href="#">Manual</a>
+            <a href="#">Document</a>
+            <a href="#">Print</a>
+            <a id="about" href="#">About</a>
+        </div>    
+    </div>
+    <div class="ui-layout-west" style="overflow: auto">
+        <form action="calculate" method="POST">
+        <div id="accordian">
+        <h3>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Start Here</h3>
+        <div style="font-size: 75%">
+            <table>
+            <tr>
+                <td>Country:</td>
+                <td>
+            <select>
+                <option></option>
+                <option>China</option>
+            </select></td>
+            </tr>
+            <tr>
+            <td>City:</td><td><select>
+                <option></option>
+                <option>Beijing</option>
+            </select></td>
+            </tr>
+            <tr><td>
+            <input type="button" value="Change City">
+            </td></tr>
+            </table>
+        </div>
+        <h3>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Choose Model</h3>
+            <div id="tabs" style="font-size: 75%">
+                <div id="tabs-1">
+                    <input type="radio" name="model" value="0">Baseline Model<br>
+                    <input type="radio" name="model" value="1">Star-rate Model<br>
+                    <input type="radio" name="model" value="2">Ownership Model<br>
+                    <input type="radio" name="model" value="3">Productivity Model<br>
+                    <input type="radio" name="model" value="4">Efficiency Model<br>
+                    <input type="radio" name="model" value="5">Pure Efficiency Model<br>
+                    <input type="radio" name="model" value="6">RevPAR Model<br>
+                    <input type="radio" name="model" value="7">Labor productivity model<br>
+                    <input type="radio" name="model" value="8">Occupancy rate model<br>
+                    <input type="button" value="Change Model Parameters" id="tune">
+                </div>
+            </div>
+            <h3>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Choose Hotel Characteristics</h3>
+            <div style="font-size: 75%">
+                <label for="starrate">
+                    Star Rate:</label>
+                <input type="text" id="starrate" name="starrate" value="3" style="border: 0; color: #f6931f;
+                    font-weight: bold;" />
+                <div id="slider_starrate">
+                </div>
+                <hr>
+                <label for="diver">
+                    Service Diversity:</label>
+                <input type="text" id="diver" name="diver" value="50" style="border: 0; color: #f6931f;
+                    font-weight: bold;" />
+                <div id="slider_diver">
+                </div>
+                <hr>
+                <input type="radio" name="ownership" value="1" checked="checked">Indigenous Or
+                <input type="radio" name="ownership" value="0">Non-indigenous<br>
+                <hr>
+                Number Of Beds:
+                <input type="text" name="lbeds" value="100">
+            </div>
+            <h3>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Actions</h3>
+            <div>
+            <input type="checkbox" value="1" name="report" id="report">Generate Report<br>
+            <input type="submit" value="Submit" id="calc">
+            <input type="reset" value="Reset" id="reset">
+            </div>
+
+    </div>
+    </form>
+    <form>
+    <fieldset style="margin: 5px">
+    <legend>Probabilities</legend>
+    <div id="chart_div" style="width: 95%;">
+    </div>
+    </fieldset>
+    <fieldset style="margin: 5px">
+    <legend>Legend</legend>
+    <div style="width: 278px">
+        <img src="static/image/legend.png" alt="h3" width="150px" />
+    </div>
+    </fieldset>
+    </form>
+</div>
+    <!-- Hidden windows for tuning models -->
+    <div id="dialog_model" title="Tuning Model Parameters">
+        <!--
+        <img src="http://latex.codecogs.com/gif.latex?\dpi{100} A = P_0 \cdot C_{StarRate} - P_1 \cdot C_{beds} - P_2 \cdot C_{Diversity} - P_3 \cdot C_{Ownership} - P_4 \cdot C_{Agglomeration} + P_5 \cdot C_{Restaurant} - P_6 \cdot C_{Road} + P_7 \cdot C_{subway} - P_8 \cdot C_{Tourism}"
+            alt="A = P_0 \cdot C_{StarRate} - P_1 \cdot C_{beds} - P_2 \cdot C_{Diversity} - P_3 \cdot C_{Ownership} - P_4 \cdot C_{Agglomeration} + P_5 \cdot C_{Restaurant} - P_6 \cdot C_{Road} + P_7 \cdot C_{subway} - P_8 \cdot C_{Tourism}" />
+        <br>
+        <img src="http://latex.codecogs.com/gif.latex?\dpi{100} P = \left\{\begin{matrix} e^{a_1-A} / (1+e^{a1-A}) & Hotels\ inside\ Ring 1\\ e^{a_2-A} / (1+e^{a2-A}) - e^{a_2-A} / (1+e^{a2-A}) & Hotels\ between\ Ring 1\&2 & \\ e^{a_3-A} / (1+e^{a3-A}) - e^{a_2-A} / (1+e^{a2-A})& Hotels\ between\ Ring 2\&3 & \\ 1 - e^{a_3-A} / (1+e^{a3-A}) & Hotels\ outside\ Ring 3 & \end{matrix}\right"
+            alt="P = \left\{\begin{matrix} e^{a_1-A} / (1+e^{a1-A}) & Hotels\ inside\ Ring 1\\ e^{a_2-A} / (1+e^{a2-A}) - e^{a_2-A} / (1+e^{a2-A}) & Hotels\ between\ Ring 1\&2 & \\ e^{a_3-A} / (1+e^{a3-A}) - e^{a_2-A} / (1+e^{a2-A})& Hotels\ between\ Ring 2\&3 & \\ 1 - e^{a_3-A} / (1+e^{a3-A}) & `Hotels\ outside\ Ring 3 & \end{matrix}\right" />
+        <br>
+        -->
+        <table id="model_table">
+            <tr>
+                <th>Name</th>
+                <th>Relative Importance</th>
+            </tr>
+        <tr><td>Star Rate</td><td><input type="number" id="p0" value="0.0" step="0.1"/></td></tr>	
+        <tr><td>Num of Beds</td><td><input type="number" id="p1" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Diversity</td><td><input type="number" id="p2" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Ownership</td><td><input type="number" id="p3" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Agglomeration</td><td><input type="number" id="p4" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Restaurant</td><td><input type="number" id="p5" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Road</td><td><input type="number" id="p6" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Subway</td><td><input type="number" id="p7" value="0.0" step="0.1"/></td></tr>
+        <tr><td>Tourism</td><td><input type="number" id="p8" value="0.0" step="0.1"/></td></tr>
+        </table>
+        <input type="hidden" id="a1" />
+        <input type="hidden" id="a2" />
+        <input type="hidden" id="a3" />
+    </div>
+    <div id="about_diag" title="About">
+        Model: Yang Yang <br>
+        Website: Jingyin Tang
+    </div>
+</body>
+</html>
